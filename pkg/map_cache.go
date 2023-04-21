@@ -9,18 +9,33 @@ import (
 type MapCache struct {
 	lock sync.RWMutex
 
-	close     chan struct{}
-	closeOnce sync.Once
+	data  map[string]item
+	close chan struct{}
 
-	data map[string]item
+	onEvict func(key string, val any)
+
+	closeOnce sync.Once
 }
 
-func NewMapCache(expireInterval time.Duration) Cache {
+type MapCacheOption func(c *MapCache)
+
+func OptionWithOnEvict(f func(key string, val any)) MapCacheOption {
+	return func(c *MapCache) {
+		c.onEvict = f
+	}
+}
+
+func NewMapCache(expireInterval time.Duration, opts ...MapCacheOption) *MapCache {
 	c := &MapCache{
 		lock:      sync.RWMutex{},
 		closeOnce: sync.Once{},
 		close:     make(chan struct{}),
 		data:      map[string]item{},
+		onEvict:   func(key string, val any) {},
+	}
+
+	for _, op := range opts {
+		op(c)
 	}
 
 	go func() {
@@ -35,7 +50,7 @@ func NewMapCache(expireInterval time.Duration) Cache {
 						break
 					}
 					if !v.deadline.IsZero() && v.expired(t) {
-						delete(c.data, k)
+						c.delete(k)
 					}
 					count++
 				}
@@ -91,7 +106,7 @@ func (m *MapCache) Get(ctx context.Context, key string) (any, error) {
 		return v.value, nil
 	}
 	// expired, delete it
-	delete(m.data, key)
+	m.delete(key)
 	return nil, ErrKeyNotFound
 }
 
@@ -108,7 +123,7 @@ func (i *item) expired(now time.Time) bool {
 func (m *MapCache) Delete(ctx context.Context, key string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	delete(m.data, key)
+	m.delete(key)
 	return nil
 }
 
@@ -116,4 +131,14 @@ func (m *MapCache) Close() {
 	m.closeOnce.Do(func() {
 		close(m.close)
 	})
+}
+
+func (m *MapCache) delete(key string) {
+	v, have := m.data[key]
+	if !have {
+		return
+	}
+
+	delete(m.data, key)
+	m.onEvict(key, v.value)
 }
