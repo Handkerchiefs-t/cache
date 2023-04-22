@@ -79,6 +79,10 @@ func newItem(val any, deadline time.Time) item {
 func (m *MapCache) Set(ctx context.Context, key string, val any, expiration time.Duration) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+	return m.setWithoutLock(ctx, key, val, expiration)
+}
+
+func (m *MapCache) setWithoutLock(ctx context.Context, key string, val any, expiration time.Duration) error {
 	m.data[key] = newItem(val, time.Now().Add(expiration))
 	return nil
 }

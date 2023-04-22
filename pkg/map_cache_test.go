@@ -8,43 +8,6 @@ import (
 	"time"
 )
 
-func TestMapCache(t *testing.T) {
-	cache := NewMapCache(time.Second)
-	emptyCtx := context.Background()
-	testCases := []struct {
-		k      string
-		v      string
-		expire time.Duration
-	}{
-		{k: "1", v: "1", expire: time.Second},
-		{k: "2", v: "2", expire: time.Second},
-		{k: "3", v: "3", expire: time.Second},
-		{k: "4", v: "4", expire: time.Second},
-		{k: "5", v: "5", expire: time.Second},
-	}
-
-	for _, c := range testCases {
-		e := cache.Set(emptyCtx, c.k, c.v, c.expire)
-		if e != nil {
-			t.Fatal(e)
-		}
-	}
-
-	for _, c := range testCases {
-		v, e := cache.Get(emptyCtx, c.k)
-		if e != nil {
-			t.Fatal(e)
-		}
-		t.Logf("v: %s", v.(string))
-	}
-
-	time.Sleep(time.Second)
-	for _, c := range testCases {
-		v, e := cache.Get(emptyCtx, c.k)
-		t.Logf("v: %v, e: %s", v, e.Error())
-	}
-}
-
 func TestMapCache_Get(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -100,4 +63,19 @@ func TestMapCache_Get(t *testing.T) {
 			assert.Equal(t, tt.wantVal, v)
 		})
 	}
+}
+
+func TestMapCache_Loop(t *testing.T) {
+	cnt := 0
+	c := NewMapCache(time.Second, OptionWithOnEvict(func(key string, val any) {
+		cnt++
+	}))
+	e := c.Set(context.Background(), "1", 1, time.Second)
+	require.NoError(t, e)
+	time.Sleep(time.Second * 3)
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	_, ok := c.data["1"]
+	require.False(t, ok)
+	require.Equal(t, 1, cnt)
 }
