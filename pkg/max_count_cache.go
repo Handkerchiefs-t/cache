@@ -20,7 +20,8 @@ func NewMaxCountCache(c *MapCache, max uint64) *MaxCountCache {
 
 	origin := c.onEvict
 	res.onEvict = func(key string, val any) {
-		atomic.AddUint64(&res.count, -1)
+		// subtract 1 from count
+		atomic.AddUint64(&res.count, ^uint64(0))
 		if origin != nil {
 			origin(key, val)
 		}
